@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat</title>
+  <!-- Latest compiled and minified CSS -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+</head>
+<body>
+<nav class="navbar navbar-default">
+  <div class="container">
+    <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+      <ul class="nav navbar-nav pull-right">
+        <li><a href="/upload">Upload a Photo</a></li>
+        <li><a href="/logout">Log out</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+  <div class="container">
+    <p class="alert alert-info" id="info">
+      Offline
+    </p>
+    
+    <hr><br>
+    <ul id="messages" class="list-group"></ul>
+
+    <form id="chatbox">
+      <p>{{.UserData.name}}</p>
+      <div class="row">
+        <div class="col-sm-10">
+          <input type="text" id="messageBox" placeholder="type your message..." class="form-control" />
+        </div>
+        <input type="submit" value="Send" class="col-sm-2 btn btn-primary">
+      </div>
+    </form>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7/jquery.min.js"></script>
+  <script>
+  $(function() {
+    var socket = null;
+    var msgBox = $("#messageBox");
+    var messages = $("#messages");
+    $("#chatbox").submit(function() {
+      if(!msgBox.val()){return false;}
+      if(!socket){
+        alert("Error: No websocket connection.");
+        $("#info")
+          .removeClass("alert-info")
+          .addClass("alert-danger")
+          .html("Error: No websocket connection.");
+        return false;
+      }
+      socket.send(JSON.stringify({"Message": msgBox.val()}));
+      msgBox.val("");
+      return false;
+    });
+
+    if(!window["WebSocket"]){
+      alert("Error: Delete your browser..")
+    } else {
+      socket = new WebSocket("ws://{{.Host}}/room");
+       $("#info")
+        .removeClass("alert-danger")
+        .addClass("alert-info")
+        .html("Online. Start Chatting.");
+
+      socket.onclose = function() {
+        $("#info")
+          .removeClass("alert-info")
+          .addClass("alert-danger")
+          .html("Offline. Connection has been closed.")
+      }
+
+      socket.onmessage = function(e) {
+        var media = $("<div>").addClass("media");
+        var mediaLeft = $("<div>").addClass("media-left");
+        var avatar = $("<img>")
+          .addClass("media-object")
+          .css({width: 50})
+        var mediaBody =  $("<div>").addClass("media-body");
+        var mediaHeading =  $("<h4>").addClass("media-heading");
+        var pMsg =  $("<p>").addClass("message");
+        var msg = JSON.parse(e.data);
+        messages.append(
+          $("<li class='list-group-item'>").append(
+            media.append(
+              mediaLeft.append(
+                avatar.attr("src", msg.AvatarURL)
+              ),
+              mediaBody.append(
+                mediaHeading.text(msg.Name),
+                pMsg.text(msg.Message)
+              )
+            )
+          )
+        );
+      }
+    }
+  })
+  </script>
+</body>
+</html>
