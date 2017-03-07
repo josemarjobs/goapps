@@ -10,7 +10,7 @@ import (
 	"unicode"
 )
 
-var tlds = []string{"com", "net", "me", "app", "xyz"}
+var tlds = []string{"com", "net"}
 
 const allowedChars = "abcdefghijklmnopqrstuvxyz0123456789_-"
 
