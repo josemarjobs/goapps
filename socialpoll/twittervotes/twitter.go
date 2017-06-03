@@ -97,6 +97,8 @@ func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
 
 func readFromTwitter(votes chan<- string) {
 	options, err := loadOptions()
+	log.Println("Checking for options:", options)
+
 	if err != nil {
 		log.Println("failed to load options:", err)
 		return
@@ -120,11 +122,14 @@ func readFromTwitter(votes chan<- string) {
 	}
 	reader := resp.Body
 	decoder := json.NewDecoder(reader)
+
 	for {
 		var t tweet
 		if err := decoder.Decode(&t); err != nil {
+			log.Println("Error decoding tweet", err)
 			break
 		}
+		log.Println("TWEET:", t)
 		for _, option := range options {
 			if strings.Contains(strings.ToLower(t.Text), strings.ToLower(option)) {
 				log.Println("vote: ", option)
@@ -136,6 +141,7 @@ func readFromTwitter(votes chan<- string) {
 
 func startTwitterStream(stopchan <-chan struct{}, votes chan<- string) <-chan struct{} {
 	stoppedchan := make(chan struct{}, 1)
+
 	go func() {
 		defer func() {
 			stoppedchan <- struct{}{}
@@ -154,5 +160,6 @@ func startTwitterStream(stopchan <-chan struct{}, votes chan<- string) <-chan st
 			}
 		}
 	}()
+
 	return stoppedchan
 }
