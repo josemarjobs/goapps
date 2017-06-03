@@ -9,6 +9,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
+
+	"github.com/bmizerany/pat"
 
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -27,64 +30,10 @@ func init() {
 }
 
 func main() {
-	u := User{
-		Username: "peterg",
-		Name:     "Peter Griffin",
-		Location: "Quahog",
-	}
-	sigingKey, err := LoadPrivateKey(privateKey)
-	if err != nil {
-		log.Println("Error loading private key:", err)
-		return
-	}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: sigingKey}, nil)
-	if err != nil {
-		log.Println("Error creating signer:", err)
-		return
-	}
-	userBytes, err := json.Marshal(u)
-	if err != nil {
-		log.Println("error converting user to json:", err)
-		return
-	}
-	obj, err := signer.Sign(userBytes)
-	if err != nil {
-		log.Println("Error signing the payload:", err)
-		return
-	}
-	token, err := obj.CompactSerialize()
-	if err != nil {
-		log.Println("Error creating compact token:", err)
-		return
-	}
-	log.Println("Token CompactSerialized:", token)
-
-	verificationKey, err := LoadPublicKey(publicKey)
-	if err != nil {
-		log.Println("error loading public key", err)
-		return
-	}
-
-	token = "eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJ1c2VybmFtZSI6InBldGVyZyIsInBhc3N3b3JkIjoiIiwibmFtZSI6IlBldGVyIEdyaWZmaW4iLCJsb2NhdGlvbiI6IlF1YWhvZyJ9.1kUD0upoN9KNGWQayRFNPBex21u7expg2z57zTfAdOYCnkM9h5dwAk0QJ3WyiWEsG_m0Y2jkHMVEhUhSYwXniVtY3dYzs1TMBtsKmo1-ANdlgwnY4H-xYdBBsMqWsKcNJaf-75Hz7Vp4-ByoF85HPtXwrq4-veRY1ez5wN_MTL8NjDw4lB1R5rH-2FR6sd0YizDpBr8o_jqOhWqPgLjojElkUVNgIq1-Lpgd-QE96CPTNy5wJjIKjUiqWyZljgspEnPJGA8jR6H5bmzChikVJMDhKSYR1llQTFntS4EbjY5ZVWfaxvDPxlkj7t9MZmgNQuG1rjvlmpE0_2x4zcLUDw"
-	parsedObj, err := jose.ParseSigned(token)
-	if err != nil {
-		log.Println("error parsed signed:", err)
-		return
-	}
-	plainText, err := parsedObj.Verify(verificationKey)
-	if err != nil {
-		log.Println("error verifying:", err)
-		return
-	}
-	log.Println("Plain text:", string(plainText))
-	newUser := new(User)
-	json.NewDecoder(bytes.NewReader(plainText)).Decode(newUser)
-	log.Printf("New User %+v\n", newUser)
-
-	// m := pat.New()
-	// m.Post("/login", http.HandlerFunc(loginHandler))
-	// m.Get("/me", http.HandlerFunc(profileHandler))
-	// http.ListenAndServe(":3000", m)
+	m := pat.New()
+	m.Post("/login", http.HandlerFunc(loginHandler))
+	m.Get("/me", http.HandlerFunc(profileHandler))
+	http.ListenAndServe(":3000", m)
 }
 
 type User struct {
@@ -92,6 +41,44 @@ type User struct {
 	Password string `json:"password,omitempty"`
 	Name     string `json:"name"`
 	Location string `json:"location"`
+}
+type AuthToken struct {
+	Username string `json:"username"`
+}
+
+func generateAuthToken(privateKey []byte, user *User) (string, error) {
+	sigingKey, err := LoadPrivateKey(privateKey)
+	if err != nil {
+		log.Println("Error loading private key:", err)
+		return "", fmt.Errorf("error loading private key")
+	}
+
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: sigingKey}, nil)
+
+	if err != nil {
+		log.Println("Error creating signer:", err)
+		return "", fmt.Errorf("error creating the signer")
+	}
+
+	authToken := AuthToken{Username: user.Username}
+	authTokenBytes, err := json.Marshal(authToken)
+	if err != nil {
+		log.Println("Error converting authToken to json:", err)
+		return "", fmt.Errorf("error converting auth token to json")
+	}
+
+	objToken, err := signer.Sign(authTokenBytes)
+	if err != nil {
+		log.Println("Error signing the payload:", err)
+		return "", fmt.Errorf("error signing the payload")
+	}
+
+	token, err := objToken.CompactSerialize()
+	if err != nil {
+		log.Println("Error creating compact token:", err)
+		return "", fmt.Errorf("error create auth token")
+	}
+	return token, nil
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -101,14 +88,65 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
+	if user.Username != "peterg" || user.Password != "secretone" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "{%q: %q}", "error", "invalid credentials")
+		return
+	}
+
+	token, err := generateAuthToken(privateKey, user)
+	log.Println("Token CompactSerialized:", token)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, "{token: %q}", "token")
+	fmt.Fprintf(w, "{%q: %q}", "token", token)
+}
+
+func Authenticate() {
+
+}
+
+func verifyTokenFromRequest(req *http.Request, publicKey []byte) (*AuthToken, error) {
+	verificationKey, err := LoadPublicKey(publicKey)
+	if err != nil {
+		log.Println("error loading public key", err)
+		return nil, err
+	}
+	authHeader := req.Header.Get("Authorization")
+	if authHeader == "" || len(strings.Split(authHeader, " ")) != 2 {
+		return nil, fmt.Errorf("invalid authorization header")
+	}
+
+	token := strings.Split(authHeader, " ")[1]
+	parsedObj, err := jose.ParseSigned(token)
+	if err != nil {
+		log.Println("error parsin signed:", err)
+		return nil, fmt.Errorf("error parsing signed token")
+	}
+
+	plainText, err := parsedObj.Verify(verificationKey)
+	if err != nil {
+		log.Println("error verifying the object:", err)
+		return nil, fmt.Errorf("error verifying the object")
+	}
+
+	authToken := new(AuthToken)
+	err = json.NewDecoder(bytes.NewReader(plainText)).Decode(authToken)
+	return authToken, err
 }
 
 func profileHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	authToken, err := verifyTokenFromRequest(r, publicKey)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "{%q: %q}", "error", "forbidden access")
+		return
+	}
 
+	user := User{Username: authToken.Username}
+	json.NewEncoder(w).Encode(user)
 }
 
 // LoadPublicKey loads a public key from PEM/DER-encoded data.
