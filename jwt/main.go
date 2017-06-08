@@ -42,6 +42,7 @@ type User struct {
 	Name     string `json:"name"`
 	Location string `json:"location"`
 }
+
 type AuthToken struct {
 	Username string `json:"username"`
 }
@@ -88,6 +89,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
+
 	if user.Username != "peterg" || user.Password != "secretone" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
